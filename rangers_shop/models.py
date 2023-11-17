@@ -3,13 +3,16 @@ from flask_sqlalchemy import SQLAlchemy #this is our ORM (Object Relational Mapp
 from flask_login import UserMixin, LoginManager #helping us load a user as our current_user 
 from datetime import datetime #put a timestamp on any data we create (Users, Products, etc)
 import uuid #makes a unique id for our data (primary key)
+from flask_marshmallow import Marshmallow
 
 
+# Internal imports
+from .helpers import get_image
 
 #instantiate all our classes
 db = SQLAlchemy() #make database object
 login_manager = LoginManager() #makes login object 
-
+ma = Marshmallow() #makes marshmallow object 
 
 #use login_manager object to create a user_loader function
 @login_manager.user_loader
@@ -61,6 +64,145 @@ class User(db.Model, UserMixin):
         return f"<User: {self.username}>"
 
 
+class Product(db.Model): #db.model translates python code to collumns
+    prod_id = db.Column(db.String, primary_key=True)
+    name = db.Column(db.String(50), nullable = False)
+    image = db.Column(db.String)
+    decription=db.Column(db.String(200))
+    price=db.Column(db.Numeric(precision=10, scale=2), nullable=False)
+    quantity = db.Column(db.Integer,nullable =False)
+    date_added = db.Column(db.DateTime, default=datetime.utcnow)
 
+    def __init__(self, name, price, quantity, image ="", description=""):
+        self.prod_id = self.set_id()
+        self.name = name
+        self.price = price
+        self.quantity = quantity
+        self.image = self.set_image(image, name)
+        self.description = description
+
+    def set_id(self):
+        return str(uuid.uuid4())
+    
+    def set_image(self, image, name):
+
+        if not image:
+            image = get_image(name)
+            #add api call
+        else:
+            return image
+        
+    # Method for when customers buy products to decrement or increment quantity
+    def decrement_quantity(self, amount):
+        
+        self.quantity -= int(amount)
+        return self.quantity
+
+    def increment_quantity(self, amount):
+        self.quantity += int(amount)
+        return self.quantity
+    
+    def __repr__(self):
+        return f"<Product:{self.name}>"
+    
+
+class Customer(db.Model):
+    cust_id = db.Column(db.String, primary_key = True)
+    date_created = db.Column(db.String, default= datetime.utcnow())
+    
+
+    # Ties tables together
+    prodord = db.relationship('ProdOrder', backref = 'customer', lazy=True) #(lazy = True) means Customer not needed
+                    # Customer will send id from frontend
+    def __init__(self, cust_id):
+        self.cust_id = cust_id
+    
+
+    def __repr__(self):
+        return f"<Customer {self.cust_id}>"
+
+
+    # Join tables
+    # To avoid many-to-many relationship with Products and Orders
+
+class ProdOrder(db.Model):
+    prodorder_id = db.Column(db.String, primary_key = True)
+    prod_id = db.Column(db.String, db.ForeignKey('product.prod_id'), nullable = False)
+    quantity = db.Column(db.Integer, nullable = False)
+    price = db.Column(db.Numeric(precision=10, scale=2), nullable=False)
+    order_id = db.Column(db.String, db.ForeignKey('order.order_id'), nullable=False)
+    cust_id = db.Column(db.String, db.ForeignKey('customer.cust_id'), nullable = False)
+
+
+    def __init__(self, prod_id, quantity, price, order_id, cust_id):
+        self.prodorder_id = self.set_id()
+        self.prod_id = prod_id
+        self.quantity = quantity
+        self.price = self.set_price(quantity, price)
+        self.order_id = order_id
+        self.cust_id = cust_id
+
+
+    def set_id(self):
+        return str(uuid.uuid4())
+        
+    def set_price(self, quantity, price):
+
+        quantity=int(quantity)
+        price = float(price)
+
+        self.price = quantity*price
+
+        return self.price
+    
+    def update_quantity(self, quantity):
+        self.quantity = int(quantity)
+        return self.quantity
+    
+class Order(db.Model):
+    order_id = db.Column(db.String, primary_key = True)
+    order_total = db.Column(db.Numeric(precision=10, scale=2), nullable =False)
+    date_created = db.Column(db.DateTime, default = datetime.utcnow)
+
+# Table relations/ connection
+    prodord = db.relationship('ProdOrder', backref='order', lazy = True)
+
+    def __init__(self):
+        self.order_id = self.set_id()
+        self.order_total = 0.00
+
+    def set_id(self):
+        return str(uuid.uuid4)
+    
+    def increment_order_total(self, price):
+
+        self.order_total = float(self.order_total) #just makes sure a float
+        self.order_total += float(price)
+
+        return self.order_total
+    
+    def decrement_order_total(self, price):
+
+        self.order_total = float(self.order_total) #just makes sure a float
+        self.order_total -= float(price)
+
+        return self.order_total
+
+    def __repr__(self):
+        return f'<Order: {self.order_id}>'
+
+# Creating our schema class
+# (Schema is what our data looks like a dictionary (json)
+
+class ProductSchema(ma.Schema):
+
+    class Meta:
+        fields = ['prod_id', 'name','image', 'description', 'price','quantity']
+
+
+# instantiate product schema class to use it
+
+product_schema = ProductSchema() # sending one product to frontend
+products_schema = ProductSchema(many=True) # all the products to frontend
 
 
