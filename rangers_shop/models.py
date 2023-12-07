@@ -172,7 +172,7 @@ class Order(db.Model):
         self.order_total = 0.00
 
     def set_id(self):
-        return str(uuid.uuid4)
+        return str(uuid.uuid4())
     
     def increment_order_total(self, price):
 
